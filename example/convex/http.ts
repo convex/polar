@@ -10,14 +10,14 @@ polar.registerRoutes(http, {
   events: {
     "subscription.updated": async (ctx, event) => {
       console.log("Subscription updated", event);
-      if (event.data.customerCancellationReason) {
+      if (event.data.customer_cancellation_reason) {
         console.log(
           "Customer cancellation reason",
-          event.data.customerCancellationReason
+          event.data.customer_cancellation_reason
         );
         console.log(
           "Customer cancellation comment",
-          event.data.customerCancellationComment
+          event.data.customer_cancellation_comment
         );
       }
     },

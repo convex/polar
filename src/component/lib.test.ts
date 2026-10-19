@@ -1,15 +1,25 @@
 /// <reference types="vite/client" />
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { convexTest } from "convex-test";
 import type { TestConvex } from "convex-test";
 import type { Infer } from "convex/values";
 import schema from "./schema.js";
 import { api } from "./_generated/api.js";
-import { convertToDatabaseProduct, convertToDatabaseSubscription } from "./util.js";
-import type { Product } from "@polar-sh/sdk/models/components/product.js";
-import type { Subscription } from "@polar-sh/sdk/models/components/subscription.js";
+import {
+  convertToDatabaseProduct,
+  convertToDatabaseSubscription,
+} from "./util.js";
+import type { models } from "@polar-sh/sdk/2026-10";
+
+type Product = models.Product;
+type Subscription = models.Subscription;
 
 const modules = import.meta.glob("./**/*.ts");
+
+const listPolarProducts = vi.hoisted(() => vi.fn());
+vi.mock("@polar-sh/sdk/2026-10/services/products", () => ({
+  listProducts: () => listPolarProducts,
+}));
 
 // Types derived from schema validators
 type DbSubscription = Infer<typeof schema.tables.subscriptions.validator>;
@@ -42,9 +52,7 @@ function createTestSubscription(
 }
 
 // Helper to create a minimal valid product for testing
-function createTestProduct(
-  overrides: Partial<DbProduct> = {},
-): DbProduct {
+function createTestProduct(overrides: Partial<DbProduct> = {}): DbProduct {
   return {
     id: "prod_123",
     organizationId: "org_456",
@@ -64,9 +72,7 @@ function createTestProduct(
 }
 
 // Helper to create a minimal valid customer for testing
-function createTestCustomer(
-  overrides: Partial<DbCustomer> = {},
-): DbCustomer {
+function createTestCustomer(overrides: Partial<DbCustomer> = {}): DbCustomer {
   return {
     id: "cust_123",
     userId: "user_456",
@@ -74,26 +80,26 @@ function createTestCustomer(
   };
 }
 
-// Helper to create SDK-shaped Product objects (uses Date objects, nested structures)
+// Helper to create SDK-shaped Product objects (snake_case fields, ISO string timestamps)
 function createSdkProduct(overrides: Partial<Product> = {}): Product {
   return {
     id: "prod_123",
-    organizationId: "org_456",
+    organization_id: "org_456",
     name: "Test Product",
     description: "A test product",
-    isRecurring: true,
-    isArchived: false,
-    createdAt: new Date("2025-01-10T08:00:00.000Z"),
-    modifiedAt: new Date("2025-01-12T09:00:00.000Z"),
-    recurringInterval: "month",
-    recurringIntervalCount: 1,
-    trialInterval: null,
-    trialIntervalCount: null,
+    is_recurring: true,
+    is_archived: false,
+    created_at: "2025-01-10T08:00:00.000Z",
+    modified_at: "2025-01-12T09:00:00.000Z",
+    recurring_interval: "month",
+    recurring_interval_count: 1,
+    trial_interval: null,
+    trial_interval_count: null,
     metadata: {},
     prices: [],
     benefits: [],
     medias: [],
-    attachedCustomFields: [],
+    attached_custom_fields: [],
     ...overrides,
   } as Product;
 }
@@ -397,18 +403,18 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
       prices: [
         {
           id: "price_fixed",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "fixed",
-          isArchived: false,
+          amount_type: "fixed",
+          is_archived: false,
           type: "recurring",
-          recurringInterval: "month",
-          priceCurrency: "usd",
-          priceAmount: 1000,
+          recurring_interval: "month",
+          price_currency: "usd",
+          price_amount: 1000,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -425,23 +431,23 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
 
   it("converts and stores custom price from SDK format", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: false,
-      recurringInterval: null,
+      is_recurring: false,
+      recurring_interval: null,
       prices: [
         {
           id: "price_custom",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "custom",
-          isArchived: false,
-          priceCurrency: "usd",
-          minimumAmount: 500,
-          maximumAmount: 10000,
-          presetAmount: 2000,
+          amount_type: "custom",
+          is_archived: false,
+          price_currency: "usd",
+          minimum_amount: 500,
+          maximum_amount: 10000,
+          preset_amount: 2000,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -461,16 +467,16 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
       prices: [
         {
           id: "price_free",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "free",
-          isArchived: false,
+          amount_type: "free",
+          is_archived: false,
           type: "recurring",
-          recurringInterval: "month",
+          recurring_interval: "month",
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -486,23 +492,23 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
       prices: [
         {
           id: "price_seat",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "seat_based",
-          isArchived: false,
-          priceCurrency: "usd",
-          seatTiers: {
+          amount_type: "seat_based",
+          is_archived: false,
+          price_currency: "usd",
+          seat_tiers: {
             tiers: [
-              { minSeats: 1, maxSeats: 5, pricePerSeat: 1000 },
-              { minSeats: 6, maxSeats: null, pricePerSeat: 800 },
+              { min_seats: 1, max_seats: 5, price_per_seat: 1000 },
+              { min_seats: 6, max_seats: null, price_per_seat: 800 },
             ],
-            minimumSeats: 1,
-            maximumSeats: null,
+            minimum_seats: 1,
+            maximum_seats: null,
           },
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -523,19 +529,25 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
       prices: [
         {
           id: "price_metered",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "metered_unit",
-          isArchived: false,
-          priceCurrency: "usd",
-          unitAmount: "0.01",
-          capAmount: 5000,
-          meterId: "meter_123",
-          meter: { id: "meter_123", name: "API Calls" },
+          amount_type: "metered_unit",
+          is_archived: false,
+          price_currency: "usd",
+          unit_amount: "0.01",
+          cap_amount: 5000,
+          meter_id: "meter_123",
+          meter: {
+            id: "meter_123",
+            name: "API Calls",
+            unit: "scalar",
+            custom_label: null,
+            custom_multiplier: null,
+          },
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -547,7 +559,10 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
     expect(result?.prices[0].unitAmount).toBe("0.01");
     expect(result?.prices[0].capAmount).toBe(5000);
     expect(result?.prices[0].meterId).toBe("meter_123");
-    expect(result?.prices[0].meter).toEqual({ id: "meter_123", name: "API Calls" });
+    expect(result?.prices[0].meter).toEqual({
+      id: "meter_123",
+      name: "API Calls",
+    });
   });
 
   it("converts and stores benefits from SDK format", async () => {
@@ -555,13 +570,13 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
       benefits: [
         {
           id: "benefit_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           type: "custom",
           description: "Priority support",
           selectable: true,
           deletable: false,
-          organizationId: "org_456",
+          organization_id: "org_456",
           metadata: {},
           properties: { note: null },
         },
@@ -581,42 +596,42 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
   });
 });
 
-// Helper to build a minimal SDK Subscription with Date objects, cast to the full type
+// Helper to build a minimal SDK Subscription, cast to the full type
 function createSdkSubscription(
   overrides: Partial<Record<string, unknown>> = {},
 ): Subscription {
   return {
     id: "sub_sdk_123",
-    customerId: "cust_456",
-    productId: "prod_789",
-    checkoutId: "checkout_abc",
-    createdAt: new Date("2025-01-15T10:00:00.000Z"),
-    modifiedAt: new Date("2025-01-16T12:00:00.000Z"),
+    customer_id: "cust_456",
+    product_id: "prod_789",
+    checkout_id: "checkout_abc",
+    created_at: "2025-01-15T10:00:00.000Z",
+    modified_at: "2025-01-16T12:00:00.000Z",
     amount: 1000,
     currency: "usd",
-    recurringInterval: "month",
-    recurringIntervalCount: 1,
+    recurring_interval: "month",
+    recurring_interval_count: 1,
     status: "active",
-    currentPeriodStart: new Date("2025-01-15T10:00:00.000Z"),
-    currentPeriodEnd: new Date("2025-02-15T10:00:00.000Z"),
-    trialStart: null,
-    trialEnd: null,
-    cancelAtPeriodEnd: false,
-    canceledAt: null,
-    startedAt: new Date("2025-01-15T10:00:00.000Z"),
-    endsAt: null,
-    endedAt: null,
-    discountId: null,
+    current_period_start: "2025-01-15T10:00:00.000Z",
+    current_period_end: "2025-02-15T10:00:00.000Z",
+    trial_start: null,
+    trial_end: null,
+    cancel_at_period_end: false,
+    canceled_at: null,
+    started_at: "2025-01-15T10:00:00.000Z",
+    ends_at: null,
+    ended_at: null,
+    discount_id: null,
     seats: null,
-    customerCancellationReason: null,
-    customerCancellationComment: null,
+    customer_cancellation_reason: null,
+    customer_cancellation_comment: null,
     metadata: {},
-    customFieldData: undefined,
+    custom_field_data: undefined,
     ...overrides,
   } as unknown as Subscription;
 }
 
-describe("SDK 0.45.0 — new-style prices (type/recurringInterval derived from product)", () => {
+describe("new-style prices (type/recurringInterval derived from product)", () => {
   let t: TestConvex<typeof schema>;
 
   beforeEach(() => {
@@ -627,22 +642,22 @@ describe("SDK 0.45.0 — new-style prices (type/recurringInterval derived from p
     // SDK 0.45.0: ProductPriceFixed no longer carries type/recurringInterval.
     // The converter must derive both from the product fields.
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "year",
-      recurringIntervalCount: 1,
+      is_recurring: true,
+      recurring_interval: "year",
+      recurring_interval_count: 1,
       prices: [
         {
           id: "price_fixed_yr",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "fixed",
-          isArchived: false,
-          priceCurrency: "usd",
-          priceAmount: 9900,
+          amount_type: "fixed",
+          is_archived: false,
+          price_currency: "usd",
+          price_amount: 9900,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -657,21 +672,21 @@ describe("SDK 0.45.0 — new-style prices (type/recurringInterval derived from p
 
   it("new-style ProductPriceFixed on one-time product derives type:one_time and null recurringInterval", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: false,
-      recurringInterval: null,
+      is_recurring: false,
+      recurring_interval: null,
       prices: [
         {
           id: "price_fixed_ot",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "fixed",
-          isArchived: false,
-          priceCurrency: "eur",
-          priceAmount: 4999,
+          amount_type: "fixed",
+          is_archived: false,
+          price_currency: "eur",
+          price_amount: 4999,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -688,20 +703,20 @@ describe("SDK 0.45.0 — new-style prices (type/recurringInterval derived from p
     // SDK 0.45.0: ProductPriceFree no longer has type/recurringInterval.
     // The existing free test uses the legacy form; this tests the new form.
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_free_new",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "free",
-          isArchived: false,
-          priceCurrency: "usd",
+          amount_type: "free",
+          is_archived: false,
+          price_currency: "usd",
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -715,23 +730,23 @@ describe("SDK 0.45.0 — new-style prices (type/recurringInterval derived from p
 
   it("new-style ProductPriceCustom with null maximumAmount and null presetAmount", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: false,
-      recurringInterval: null,
+      is_recurring: false,
+      recurring_interval: null,
       prices: [
         {
           id: "price_custom_null",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "custom",
-          isArchived: false,
-          priceCurrency: "usd",
-          minimumAmount: 0,
-          maximumAmount: null,
-          presetAmount: null,
+          amount_type: "custom",
+          is_archived: false,
+          price_currency: "usd",
+          minimum_amount: 0,
+          maximum_amount: null,
+          preset_amount: null,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -747,7 +762,7 @@ describe("SDK 0.45.0 — new-style prices (type/recurringInterval derived from p
   });
 });
 
-describe("SDK 0.45.0 — legacy recurring prices (LegacyRecurringProductPrice, backwards compat)", () => {
+describe("legacy recurring prices (LegacyRecurringProductPrice, backwards compat)", () => {
   let t: TestConvex<typeof schema>;
 
   beforeEach(() => {
@@ -759,24 +774,24 @@ describe("SDK 0.45.0 — legacy recurring prices (LegacyRecurringProductPrice, b
     // and legacy:true on the price object itself. These still appear in API
     // responses for older products and must continue to work.
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_legacy_fixed",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "fixed",
-          isArchived: false,
+          amount_type: "fixed",
+          is_archived: false,
           type: "recurring",
-          recurringInterval: "month",
-          priceCurrency: "usd",
-          priceAmount: 1500,
+          recurring_interval: "month",
+          price_currency: "usd",
+          price_amount: 1500,
           legacy: true,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -791,26 +806,26 @@ describe("SDK 0.45.0 — legacy recurring prices (LegacyRecurringProductPrice, b
 
   it("LegacyRecurringProductPriceCustom with type/recurringInterval/legacy:true round-trips correctly", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_legacy_custom",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "custom",
-          isArchived: false,
+          amount_type: "custom",
+          is_archived: false,
           type: "recurring",
-          recurringInterval: "month",
-          priceCurrency: "usd",
-          minimumAmount: 500,
-          maximumAmount: 10000,
-          presetAmount: 1000,
+          recurring_interval: "month",
+          price_currency: "usd",
+          minimum_amount: 500,
+          maximum_amount: 10000,
+          preset_amount: 1000,
           legacy: true,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -827,23 +842,23 @@ describe("SDK 0.45.0 — legacy recurring prices (LegacyRecurringProductPrice, b
 
   it("LegacyRecurringProductPriceFree with type/recurringInterval/legacy:true round-trips correctly", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_legacy_free",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "free",
-          isArchived: false,
+          amount_type: "free",
+          is_archived: false,
           type: "recurring",
-          recurringInterval: "month",
-          priceCurrency: "usd",
+          recurring_interval: "month",
+          price_currency: "usd",
           legacy: true,
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -856,7 +871,7 @@ describe("SDK 0.45.0 — legacy recurring prices (LegacyRecurringProductPrice, b
   });
 });
 
-describe("SDK 0.45.0 — ProductPriceSeatTiersOutput with minimumSeats/maximumSeats", () => {
+describe("ProductPriceSeatTiersOutput with minimumSeats/maximumSeats", () => {
   let t: TestConvex<typeof schema>;
 
   beforeEach(() => {
@@ -868,29 +883,29 @@ describe("SDK 0.45.0 — ProductPriceSeatTiersOutput with minimumSeats/maximumSe
     // which adds minimumSeats/maximumSeats at the top level. The converter only
     // stores the tiers array; the derived min/max fields are intentionally dropped.
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_seat_3tier",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "seat_based",
-          isArchived: false,
-          priceCurrency: "usd",
-          seatTiers: {
+          amount_type: "seat_based",
+          is_archived: false,
+          price_currency: "usd",
+          seat_tiers: {
             tiers: [
-              { minSeats: 3, maxSeats: 10, pricePerSeat: 2000 },
-              { minSeats: 11, maxSeats: 50, pricePerSeat: 1500 },
-              { minSeats: 51, maxSeats: null, pricePerSeat: 1000 },
+              { min_seats: 3, max_seats: 10, price_per_seat: 2000 },
+              { min_seats: 11, max_seats: 50, price_per_seat: 1500 },
+              { min_seats: 51, max_seats: null, price_per_seat: 1000 },
             ],
-            minimumSeats: 3,
-            maximumSeats: null,
+            minimum_seats: 3,
+            maximum_seats: null,
           },
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -898,32 +913,44 @@ describe("SDK 0.45.0 — ProductPriceSeatTiersOutput with minimumSeats/maximumSe
     const result = await t.query(api.lib.getProduct, { id: "prod_123" });
 
     expect(result?.prices[0].seatTiers).toHaveLength(3);
-    expect(result?.prices[0].seatTiers?.[0]).toEqual({ minSeats: 3, maxSeats: 10, pricePerSeat: 2000 });
-    expect(result?.prices[0].seatTiers?.[1]).toEqual({ minSeats: 11, maxSeats: 50, pricePerSeat: 1500 });
-    expect(result?.prices[0].seatTiers?.[2]).toEqual({ minSeats: 51, maxSeats: null, pricePerSeat: 1000 });
+    expect(result?.prices[0].seatTiers?.[0]).toEqual({
+      minSeats: 3,
+      maxSeats: 10,
+      pricePerSeat: 2000,
+    });
+    expect(result?.prices[0].seatTiers?.[1]).toEqual({
+      minSeats: 11,
+      maxSeats: 50,
+      pricePerSeat: 1500,
+    });
+    expect(result?.prices[0].seatTiers?.[2]).toEqual({
+      minSeats: 51,
+      maxSeats: null,
+      pricePerSeat: 1000,
+    });
   });
 
   it("seat-based price with bounded maximumSeats stores the capped tier correctly", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_seat_bounded",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "seat_based",
-          isArchived: false,
-          priceCurrency: "usd",
-          seatTiers: {
-            tiers: [{ minSeats: 1, maxSeats: 25, pricePerSeat: 1200 }],
-            minimumSeats: 1,
-            maximumSeats: 25,
+          amount_type: "seat_based",
+          is_archived: false,
+          price_currency: "usd",
+          seat_tiers: {
+            tiers: [{ min_seats: 1, max_seats: 25, price_per_seat: 1200 }],
+            minimum_seats: 1,
+            maximum_seats: 25,
           },
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -938,24 +965,24 @@ describe("SDK 0.45.0 — ProductPriceSeatTiersOutput with minimumSeats/maximumSe
 
   it("metered_unit price with null capAmount (unbounded usage) stores capAmount as null", async () => {
     const sdkProduct = createSdkProduct({
-      isRecurring: true,
-      recurringInterval: "month",
+      is_recurring: true,
+      recurring_interval: "month",
       prices: [
         {
           id: "price_metered_unbounded",
-          productId: "prod_123",
-          createdAt: new Date("2025-01-10T08:00:00.000Z"),
-          modifiedAt: null,
+          product_id: "prod_123",
+          created_at: "2025-01-10T08:00:00.000Z",
+          modified_at: null,
           source: "catalog",
-          amountType: "metered_unit",
-          isArchived: false,
-          priceCurrency: "usd",
-          unitAmount: "0.001",
-          capAmount: null,
-          meterId: "meter_456",
+          amount_type: "metered_unit",
+          is_archived: false,
+          price_currency: "usd",
+          unit_amount: "0.001",
+          cap_amount: null,
+          meter_id: "meter_456",
           meter: { id: "meter_456", name: "Events" },
         },
-      ] as Product["prices"],
+      ] as unknown as Product["prices"],
     });
 
     const dbProduct = convertToDatabaseProduct(sdkProduct);
@@ -969,18 +996,18 @@ describe("SDK 0.45.0 — ProductPriceSeatTiersOutput with minimumSeats/maximumSe
   });
 });
 
-describe("SDK 0.45.0 — convertToDatabaseSubscription date conversion", () => {
-  it("converts all Date objects to ISO strings", () => {
+describe("convertToDatabaseSubscription timestamps", () => {
+  it("maps snake_case timestamps to camelCase fields", () => {
     const sdk = createSdkSubscription({
-      createdAt: new Date("2025-03-01T00:00:00.000Z"),
-      modifiedAt: new Date("2025-03-02T00:00:00.000Z"),
-      currentPeriodStart: new Date("2025-03-01T00:00:00.000Z"),
-      currentPeriodEnd: new Date("2025-04-01T00:00:00.000Z"),
-      startedAt: new Date("2025-03-01T00:00:00.000Z"),
-      canceledAt: new Date("2025-03-15T00:00:00.000Z"),
-      endsAt: new Date("2025-04-01T00:00:00.000Z"),
-      trialStart: new Date("2025-03-01T00:00:00.000Z"),
-      trialEnd: new Date("2025-03-08T00:00:00.000Z"),
+      created_at: "2025-03-01T00:00:00.000Z",
+      modified_at: "2025-03-02T00:00:00.000Z",
+      current_period_start: "2025-03-01T00:00:00.000Z",
+      current_period_end: "2025-04-01T00:00:00.000Z",
+      started_at: "2025-03-01T00:00:00.000Z",
+      canceled_at: "2025-03-15T00:00:00.000Z",
+      ends_at: "2025-04-01T00:00:00.000Z",
+      trial_start: "2025-03-01T00:00:00.000Z",
+      trial_end: "2025-03-08T00:00:00.000Z",
     });
 
     const result = convertToDatabaseSubscription(sdk);
@@ -998,14 +1025,14 @@ describe("SDK 0.45.0 — convertToDatabaseSubscription date conversion", () => {
 
   it("handles null optional date fields", () => {
     const sdk = createSdkSubscription({
-      modifiedAt: null,
-      currentPeriodEnd: null,
-      trialStart: null,
-      trialEnd: null,
-      canceledAt: null,
-      startedAt: null,
-      endsAt: null,
-      endedAt: null,
+      modified_at: null,
+      current_period_end: null,
+      trial_start: null,
+      trial_end: null,
+      canceled_at: null,
+      started_at: null,
+      ends_at: null,
+      ended_at: null,
     });
 
     const result = convertToDatabaseSubscription(sdk);
@@ -1021,14 +1048,14 @@ describe("SDK 0.45.0 — convertToDatabaseSubscription date conversion", () => {
   });
 
   it("stores recurringIntervalCount on the subscription", () => {
-    const sdk = createSdkSubscription({ recurringIntervalCount: 3 });
+    const sdk = createSdkSubscription({ recurring_interval_count: 3 });
     const result = convertToDatabaseSubscription(sdk);
     expect(result.recurringIntervalCount).toBe(3);
   });
 
   it("stores endedAt date when subscription has ended", () => {
     const sdk = createSdkSubscription({
-      endedAt: new Date("2025-05-01T00:00:00.000Z"),
+      ended_at: "2025-05-01T00:00:00.000Z",
       status: "canceled",
     });
     const result = convertToDatabaseSubscription(sdk);
@@ -1050,8 +1077,8 @@ describe("SDK 0.45.0 — convertToDatabaseSubscription date conversion", () => {
 
   it("stores customerCancellationReason and comment", () => {
     const sdk = createSdkSubscription({
-      customerCancellationReason: "too_expensive",
-      customerCancellationComment: "pricing was too high",
+      customer_cancellation_reason: "too_expensive",
+      customer_cancellation_comment: "pricing was too high",
     });
     const result = convertToDatabaseSubscription(sdk);
     expect(result.customerCancellationReason).toBe("too_expensive");
@@ -1060,7 +1087,7 @@ describe("SDK 0.45.0 — convertToDatabaseSubscription date conversion", () => {
 
   it("stores customFieldData with mixed value types", () => {
     const sdk = createSdkSubscription({
-      customFieldData: {
+      custom_field_data: {
         plan_tier: "enterprise",
         seat_count: 10,
         is_trial: false,
@@ -1590,5 +1617,29 @@ describe("listAllUserSubscriptions query", () => {
       "sub_ended",
       "sub_expired_trial",
     ]);
+  });
+});
+
+describe("syncProducts action", () => {
+  it("stores products from every page", async () => {
+    const t = convexTest(schema, modules);
+    listPolarProducts.mockImplementation(
+      async ({ page }: { page: number }) => ({
+        items: [createSdkProduct({ id: `prod_page_${page}` })],
+        pagination: { total_count: 2, max_page: 2 },
+      }),
+    );
+
+    await t.action(api.lib.syncProducts, {
+      polarAccessToken: "token",
+      server: "sandbox",
+    });
+
+    const products = await t.query(api.lib.listProducts, {});
+    expect(products.map((p) => p.id).sort()).toEqual([
+      "prod_page_1",
+      "prod_page_2",
+    ]);
+    expect(listPolarProducts).toHaveBeenCalledTimes(2);
   });
 });

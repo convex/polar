@@ -1,20 +1,16 @@
-import "./polyfill.js";
-import { PolarCore } from "@polar-sh/sdk/core.js";
-import { customersCreate } from "@polar-sh/sdk/funcs/customersCreate.js";
-import { customersList } from "@polar-sh/sdk/funcs/customersList.js";
-import { checkoutsCreate } from "@polar-sh/sdk/funcs/checkoutsCreate.js";
-import { customerSessionsCreate } from "@polar-sh/sdk/funcs/customerSessionsCreate.js";
-import { subscriptionsUpdate } from "@polar-sh/sdk/funcs/subscriptionsUpdate.js";
-
-import type { Checkout } from "@polar-sh/sdk/models/components/checkout.js";
-import type { WebhookProductCreatedPayload } from "@polar-sh/sdk/models/components/webhookproductcreatedpayload.js";
-import type { WebhookProductUpdatedPayload } from "@polar-sh/sdk/models/components/webhookproductupdatedpayload.js";
-import type { WebhookSubscriptionCreatedPayload } from "@polar-sh/sdk/models/components/webhooksubscriptioncreatedpayload.js";
-import type { WebhookSubscriptionUpdatedPayload } from "@polar-sh/sdk/models/components/webhooksubscriptionupdatedpayload.js";
 import {
-  WebhookVerificationError,
-  validateEvent,
-} from "@polar-sh/sdk/webhooks";
+  type PolarCore,
+  type models,
+  createPolarCore,
+  webhooks,
+} from "@polar-sh/sdk/2026-10";
+import {
+  createCustomers,
+  listCustomers,
+} from "@polar-sh/sdk/2026-10/services/customers";
+import { createCheckouts } from "@polar-sh/sdk/2026-10/services/checkouts";
+import { createCustomerSessions } from "@polar-sh/sdk/2026-10/services/customer_sessions";
+import { updateSubscriptions } from "@polar-sh/sdk/2026-10/services/subscriptions";
 import {
   type FunctionReference,
   type GenericActionCtx,
@@ -51,7 +47,7 @@ export type PolarComponentApi = ApiFromModules<{
 }>["checkout"];
 
 /** Discriminated union of all Polar webhook event payloads. */
-export type PolarWebhookEvent = ReturnType<typeof validateEvent>;
+export type PolarWebhookEvent = webhooks.WebhookPayload;
 
 /** Typesafe event handler map — keys are event type strings, values are typed handlers. */
 export type WebhookEventHandlers = {
@@ -94,9 +90,9 @@ export class Polar<
       (process.env["POLAR_SERVER"] as "sandbox" | "production") ??
       "sandbox";
 
-    this.polar = new PolarCore({
+    this.polar = createPolarCore({
       accessToken: this.organizationToken,
-      server: this.server,
+      environment: this.server,
     });
   }
   getCustomerByUserId(ctx: QueryCtx | MutationCtx | ActionCtx, userId: string) {
@@ -132,7 +128,7 @@ export class Polar<
       trialInterval?: "day" | "week" | "month" | "year" | null;
       trialIntervalCount?: number | null;
     },
-  ): Promise<Checkout> {
+  ): Promise<models.Checkout> {
     const dbCustomer = await ctx.runQuery(
       this.component.lib.getCustomerByUserId,
       {
@@ -141,24 +137,17 @@ export class Polar<
     );
     const getOrCreateCustomer = async () => {
       // Check if a customer with this email already exists in Polar
-      const existing = await customersList(this.polar, { email, limit: 1 });
-      if (!existing.ok) {
-        throw existing.error;
-      }
-      const existingCustomer = existing.value.result.items[0];
+      const existing = await listCustomers(this.polar)({ email, limit: 1 });
+      const existingCustomer = existing.items[0];
       if (existingCustomer) {
         return existingCustomer;
       }
-      const customer = await customersCreate(this.polar, {
+      return await createCustomers(this.polar)({
         email,
         metadata: {
           userId,
         },
       });
-      if (!customer.ok) {
-        throw customer.error;
-      }
-      return customer.value;
     };
     const customerId = dbCustomer?.id || (await getOrCreateCustomer()).id;
     if (!dbCustomer) {
@@ -167,23 +156,17 @@ export class Polar<
         userId,
       });
     }
-    const checkout = await checkoutsCreate(this.polar, {
-      allowDiscountCodes: true,
-      customerId,
-      subscriptionId,
-      embedOrigin: origin,
-      successUrl,
+    return await createCheckouts(this.polar)({
+      allow_discount_codes: true,
+      customer_id: customerId,
+      subscription_id: subscriptionId,
+      embed_origin: origin,
+      success_url: successUrl,
       metadata,
-      trialInterval,
-      trialIntervalCount,
-      ...(productIds.length === 1
-        ? { products: productIds }
-        : { products: productIds }),
+      trial_interval: trialInterval,
+      trial_interval_count: trialIntervalCount,
+      products: productIds,
     });
-    if (!checkout.ok) {
-      throw checkout.error;
-    }
-    return checkout.value;
   }
   async createCustomerPortalSession(
     ctx: GenericActionCtx<DataModel>,
@@ -198,15 +181,12 @@ export class Polar<
       throw new Error("Customer not found");
     }
 
-    const session = await customerSessionsCreate(this.polar, {
-      customerId: customer.id,
-      returnUrl,
+    const session = await createCustomerSessions(this.polar)({
+      customer_id: customer.id,
+      return_url: returnUrl,
     });
-    if (!session.ok) {
-      throw session.error;
-    }
 
-    return { url: session.value.customerPortalUrl };
+    return { url: session.customer_portal_url };
   }
   listProducts(
     ctx: QueryCtx | MutationCtx | ActionCtx,
@@ -271,16 +251,9 @@ export class Polar<
     if (subscription.productId === productId) {
       throw new Error("Subscription already on this product");
     }
-    const updatedSubscription = await subscriptionsUpdate(this.polar, {
-      id: subscription.id,
-      subscriptionUpdate: {
-        productId,
-      },
+    return await updateSubscriptions(this.polar)(subscription.id, {
+      product_id: productId,
     });
-    if (!updatedSubscription.ok) {
-      throw updatedSubscription.error;
-    }
-    return updatedSubscription.value;
   }
   /** Cancel an active or trialing subscription, optionally revoking immediately. */
   async cancelSubscription(
@@ -298,16 +271,10 @@ export class Polar<
     ) {
       throw new Error("Subscription is not active");
     }
-    const updatedSubscription = await subscriptionsUpdate(this.polar, {
-      id: subscription.id,
-      subscriptionUpdate: revokeImmediately
-        ? { revoke: true }
-        : { cancelAtPeriodEnd: true },
-    });
-    if (!updatedSubscription.ok) {
-      throw updatedSubscription.error;
-    }
-    return updatedSubscription.value;
+    return await updateSubscriptions(this.polar)(
+      subscription.id,
+      revokeImmediately ? { revoke: true } : { cancel_at_period_end: true },
+    );
   }
   api() {
     return {
@@ -442,22 +409,22 @@ export class Polar<
       /** @deprecated Use `events` with `"subscription.created"` key instead. */
       onSubscriptionCreated?: (
         ctx: MutationCtx | ActionCtx,
-        event: WebhookSubscriptionCreatedPayload,
+        event: webhooks.WebhookSubscriptionCreatedPayload,
       ) => Promise<void>;
       /** @deprecated Use `events` with `"subscription.updated"` key instead. */
       onSubscriptionUpdated?: (
         ctx: MutationCtx | ActionCtx,
-        event: WebhookSubscriptionUpdatedPayload,
+        event: webhooks.WebhookSubscriptionUpdatedPayload,
       ) => Promise<void>;
       /** @deprecated Use `events` with `"product.created"` key instead. */
       onProductCreated?: (
         ctx: MutationCtx | ActionCtx,
-        event: WebhookProductCreatedPayload,
+        event: webhooks.WebhookProductCreatedPayload,
       ) => Promise<void>;
       /** @deprecated Use `events` with `"product.updated"` key instead. */
       onProductUpdated?: (
         ctx: MutationCtx | ActionCtx,
-        event: WebhookProductUpdatedPayload,
+        event: webhooks.WebhookProductUpdatedPayload,
       ) => Promise<void>;
     } = {},
   ) {
@@ -486,7 +453,11 @@ export class Polar<
         const body = await request.text();
         const headers = Object.fromEntries(request.headers.entries());
         try {
-          const event = validateEvent(body, headers, this.webhookSecret);
+          const event = await webhooks.validateEvent(
+            body,
+            headers,
+            this.webhookSecret,
+          );
 
           // Built-in handling: persist subscriptions and products
           switch (event.type) {
@@ -529,9 +500,14 @@ export class Polar<
 
           return new Response("Accepted", { status: 202 });
         } catch (error) {
-          if (error instanceof WebhookVerificationError) {
+          if (error instanceof webhooks.PolarWebhookVerificationError) {
             console.error(error);
             return new Response("Forbidden", { status: 403 });
+          }
+          // Event types newer than the pinned API version: acknowledge so
+          // Polar doesn't retry them or disable the endpoint.
+          if (error instanceof webhooks.PolarWebhookUnknownTypeError) {
+            return new Response("Ignored", { status: 202 });
           }
           throw error;
         }

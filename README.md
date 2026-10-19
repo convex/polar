@@ -138,8 +138,8 @@ polar.registerRoutes(http, {
   events: {
     "subscription.updated": async (ctx, event) => {
       // event.data is typed as Subscription
-      if (event.data.customerCancellationReason) {
-        console.log("Customer cancelled:", event.data.customerCancellationReason);
+      if (event.data.customer_cancellation_reason) {
+        console.log("Customer cancelled:", event.data.customer_cancellation_reason);
       }
     },
     "order.created": async (ctx, event) => {
