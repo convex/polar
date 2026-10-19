@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { convexTest } from "convex-test";
 import type { TestConvex } from "convex-test";
 import type { Infer } from "convex/values";
@@ -15,6 +15,11 @@ type Product = models.Product;
 type Subscription = models.Subscription;
 
 const modules = import.meta.glob("./**/*.ts");
+
+const listPolarProducts = vi.hoisted(() => vi.fn());
+vi.mock("@polar-sh/sdk/2026-10/services/products", () => ({
+  listProducts: () => listPolarProducts,
+}));
 
 // Types derived from schema validators
 type DbSubscription = Infer<typeof schema.tables.subscriptions.validator>;
@@ -534,7 +539,13 @@ describe("product price types (SDK → converter → DB round-trip)", () => {
           unit_amount: "0.01",
           cap_amount: 5000,
           meter_id: "meter_123",
-          meter: { id: "meter_123", name: "API Calls" },
+          meter: {
+            id: "meter_123",
+            name: "API Calls",
+            unit: "scalar",
+            custom_label: null,
+            custom_multiplier: null,
+          },
         },
       ] as unknown as Product["prices"],
     });
@@ -1606,5 +1617,29 @@ describe("listAllUserSubscriptions query", () => {
       "sub_ended",
       "sub_expired_trial",
     ]);
+  });
+});
+
+describe("syncProducts action", () => {
+  it("stores products from every page", async () => {
+    const t = convexTest(schema, modules);
+    listPolarProducts.mockImplementation(
+      async ({ page }: { page: number }) => ({
+        items: [createSdkProduct({ id: `prod_page_${page}` })],
+        pagination: { total_count: 2, max_page: 2 },
+      }),
+    );
+
+    await t.action(api.lib.syncProducts, {
+      polarAccessToken: "token",
+      server: "sandbox",
+    });
+
+    const products = await t.query(api.lib.listProducts, {});
+    expect(products.map((p) => p.id).sort()).toEqual([
+      "prod_page_1",
+      "prod_page_2",
+    ]);
+    expect(listPolarProducts).toHaveBeenCalledTimes(2);
   });
 });

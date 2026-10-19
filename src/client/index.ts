@@ -1,4 +1,3 @@
-import "./polyfill.js";
 import {
   type PolarCore,
   type models,
@@ -504,6 +503,11 @@ export class Polar<
           if (error instanceof webhooks.PolarWebhookVerificationError) {
             console.error(error);
             return new Response("Forbidden", { status: 403 });
+          }
+          // Event types newer than the pinned API version: acknowledge so
+          // Polar doesn't retry them or disable the endpoint.
+          if (error instanceof webhooks.PolarWebhookUnknownTypeError) {
+            return new Response("Ignored", { status: 202 });
           }
           throw error;
         }

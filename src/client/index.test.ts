@@ -165,6 +165,15 @@ describe("webhook route", () => {
     expect(receivedEvents).toEqual([JSON.parse(body)]);
   });
 
+  test("acknowledges event types unknown to the SDK", async () => {
+    const t = createTest();
+    const response = await t.fetch(
+      "/polar/events",
+      signedWebhook(JSON.stringify({ type: "future.event", data: {} })),
+    );
+    expect(response.status).toBe(202);
+  });
+
   test("rejects a request signed with the wrong secret", async () => {
     const t = createTest();
     const response = await t.fetch(

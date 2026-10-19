@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Webhook events with a type unknown to the SDK are acknowledged with 202
+  instead of throwing, so Polar doesn't retry them or disable the endpoint.
+- Drop the `buffer` dependency and `Buffer` polyfill; the 1.x SDK verifies
+  signatures with Web Crypto.
 - **Breaking:** require `@polar-sh/sdk` 1.x (API version `2026-10`). The 0.x SDK
   entry points (`@polar-sh/sdk/core.js`, `/funcs/*`, `/webhooks`,
   `/models/components/*`) no longer exist.

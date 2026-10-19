@@ -125,7 +125,6 @@
   "types": "./dist/client/index.d.ts",
   "module": "./dist/client/index.js",
   "dependencies": {
-    "buffer": "^6.0.3",
     "convex-helpers": "^0.1.128",
     "remeda": "^2.20.2",
     "standardwebhooks": "^1.0.0"
