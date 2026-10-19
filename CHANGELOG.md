@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** require `@polar-sh/sdk` 1.x (API version `2026-10`). The 0.x SDK
+  entry points (`@polar-sh/sdk/core.js`, `/funcs/*`, `/webhooks`,
+  `/models/components/*`) no longer exist.
+  - Webhook payloads passed to `events` handlers (and the deprecated `on*`
+    callbacks) use the SDK's snake_case fields with ISO string timestamps, e.g.
+    `event.data.customer_cancellation_reason` instead of
+    `event.data.customerCancellationReason`.
+  - `createCheckoutSession`, `changeSubscription` and `cancelSubscription`
+    return snake_case SDK objects.
+  - Data stored by the component is unchanged (still camelCase); no migration
+    needed.
+
 ## 0.9.2
 
 - Update ctx types for convex@1.41+

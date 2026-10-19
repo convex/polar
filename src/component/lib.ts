@@ -1,5 +1,5 @@
-import { PolarCore } from "@polar-sh/sdk/core.js";
-import { productsList } from "@polar-sh/sdk/funcs/productsList.js";
+import { createPolarCore } from "@polar-sh/sdk/2026-10";
+import { listProducts as listPolarProducts } from "@polar-sh/sdk/2026-10/services/products";
 
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server.js";
@@ -347,25 +347,22 @@ export const syncProducts = action({
     server: v.union(v.literal("sandbox"), v.literal("production")),
   },
   handler: async (ctx, args) => {
-    const polar = new PolarCore({
+    const polar = createPolarCore({
       accessToken: args.polarAccessToken,
-      server: args.server,
+      environment: args.server,
     });
     let page = 1;
     let maxPage;
     do {
-      const products = await productsList(polar, {
+      const products = await listPolarProducts(polar)({
         page,
         limit: 100,
       });
-      if (!products.value) {
-        throw new Error("Failed to get products");
-      }
       page = page + 1;
-      maxPage = products.value.result.pagination.maxPage;
+      maxPage = products.pagination.max_page;
       await ctx.runMutation(api.lib.updateProducts, {
         polarAccessToken: args.polarAccessToken,
-        products: products.value.result.items.map(convertToDatabaseProduct),
+        products: products.items.map(convertToDatabaseProduct),
       });
     } while (maxPage >= page);
   },
