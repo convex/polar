@@ -13,7 +13,7 @@ import type { WebhookSubscriptionCreatedPayload } from "@polar-sh/sdk/models/com
 import type { WebhookSubscriptionUpdatedPayload } from "@polar-sh/sdk/models/components/webhooksubscriptionupdatedpayload.js";
 import {
   WebhookVerificationError,
-  validateEvent,
+  type validateEvent,
 } from "@polar-sh/sdk/webhooks";
 import {
   type FunctionReference,
@@ -36,6 +36,7 @@ import {
   convertToDatabaseSubscription,
 } from "../component/util.js";
 import type { ComponentApi } from "../component/_generated/component.js";
+import { validatePolarEvent } from "./webhooks.js";
 
 export const subscriptionValidator = schema.tables.subscriptions.validator;
 export type Subscription = Infer<typeof subscriptionValidator>;
@@ -486,7 +487,7 @@ export class Polar<
         const body = await request.text();
         const headers = Object.fromEntries(request.headers.entries());
         try {
-          const event = validateEvent(body, headers, this.webhookSecret);
+          const event = validatePolarEvent(body, headers, this.webhookSecret);
 
           // Built-in handling: persist subscriptions and products
           switch (event.type) {
