@@ -8,6 +8,48 @@ import { asyncMap } from "convex-helpers";
 import { api } from "./_generated/api.js";
 import { convertToDatabaseProduct } from "./util.js";
 
+import type { MutationCtx } from "./_generated/server.js";
+
+async function hashCustomerId(customerId: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(customerId),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function isDeletedCustomer(
+  ctx: MutationCtx,
+  customerId: string,
+): Promise<boolean> {
+  const customerHash = await hashCustomerId(customerId);
+  return (
+    (await ctx.db
+      .query("deletedCustomers")
+      .withIndex("customerHash", (q) => q.eq("customerHash", customerHash))
+      .unique()) !== null
+  );
+}
+
+async function markCustomerDeleted(
+  ctx: MutationCtx,
+  customerId: string,
+): Promise<void> {
+  const customerHash = await hashCustomerId(customerId);
+  const existing = await ctx.db
+    .query("deletedCustomers")
+    .withIndex("customerHash", (q) => q.eq("customerHash", customerHash))
+    .unique();
+  if (!existing) {
+    await ctx.db.insert("deletedCustomers", {
+      customerHash,
+      deletedAt: Date.now(),
+    });
+  }
+}
+
 export const getCustomerByUserId = query({
   args: {
     userId: v.string(),
@@ -24,8 +66,9 @@ export const getCustomerByUserId = query({
 
 export const insertCustomer = mutation({
   args: schema.tables.customers.validator,
-  returns: v.id("customers"),
+  returns: v.union(v.id("customers"), v.null()),
   handler: async (ctx, args) => {
+    if (await isDeletedCustomer(ctx, args.id)) return null;
     const existingCustomer = await ctx.db
       .query("customers")
       .withIndex("userId", (q) => q.eq("userId", args.userId))
@@ -38,6 +81,74 @@ export const insertCustomer = mutation({
       userId: args.userId,
       metadata: args.metadata,
     });
+  },
+});
+
+type DeleteCustomerResult = {
+  status:
+    | "deleted"
+    | "not_found"
+    | "customer_mismatch"
+    | "shared_customer";
+  deletedSubscriptions: number;
+};
+
+/**
+ * Delete a customer's local component data after the parent application has
+ * handled any required Polar API cleanup. This mutation does not call Polar.
+ */
+export const deleteCustomer = mutation({
+  args: {
+    userId: v.string(),
+    customerId: v.string(),
+  },
+  returns: v.object({
+    status: v.union(
+      v.literal("deleted"),
+      v.literal("not_found"),
+      v.literal("customer_mismatch"),
+      v.literal("shared_customer"),
+    ),
+    deletedSubscriptions: v.number(),
+  }),
+  handler: async (ctx, args): Promise<DeleteCustomerResult> => {
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("userId", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (!customer) {
+      const otherOwners = await ctx.db
+        .query("customers")
+        .withIndex("id", (q) => q.eq("id", args.customerId))
+        .take(1);
+      return {
+        status: otherOwners.length > 0 ? "shared_customer" : "not_found",
+        deletedSubscriptions: 0,
+      };
+    }
+    if (customer.id !== args.customerId) {
+      return { status: "customer_mismatch", deletedSubscriptions: 0 };
+    }
+    const customerMappings = await ctx.db
+      .query("customers")
+      .withIndex("id", (q) => q.eq("id", args.customerId))
+      .collect();
+    if (customerMappings.some((mapping) => mapping.userId !== args.userId)) {
+      return { status: "shared_customer", deletedSubscriptions: 0 };
+    }
+    await markCustomerDeleted(ctx, customer.id);
+    const subscriptions = await ctx.db
+      .query("subscriptions")
+      .withIndex("customerId", (q) => q.eq("customerId", customer.id))
+      .collect();
+    for (const subscription of subscriptions) {
+      await ctx.db.delete("subscriptions", subscription._id);
+    }
+    await ctx.db.delete("customers", customer._id);
+    return {
+      status: "deleted",
+      deletedSubscriptions: subscriptions.length,
+    };
   },
 });
 
@@ -238,6 +349,7 @@ export const createSubscription = mutation({
     subscription: schema.tables.subscriptions.validator,
   },
   handler: async (ctx, args) => {
+    if (await isDeletedCustomer(ctx, args.subscription.customerId)) return;
     const existingSubscription = await ctx.db
       .query("subscriptions")
       .withIndex("id", (q) => q.eq("id", args.subscription.id))
@@ -252,7 +364,11 @@ export const createSubscription = mutation({
     if (existingModifiedAt > incomingModifiedAt) {
       return; // stale webhook, skip
     }
-    await ctx.db.patch("subscriptions", existingSubscription._id, args.subscription);
+    await ctx.db.patch(
+      "subscriptions",
+      existingSubscription._id,
+      args.subscription,
+    );
   },
 });
 
@@ -261,6 +377,7 @@ export const updateSubscription = mutation({
     subscription: schema.tables.subscriptions.validator,
   },
   handler: async (ctx, args) => {
+    if (await isDeletedCustomer(ctx, args.subscription.customerId)) return;
     const existingSubscription = await ctx.db
       .query("subscriptions")
       .withIndex("id", (q) => q.eq("id", args.subscription.id))
@@ -276,7 +393,11 @@ export const updateSubscription = mutation({
     if (existingModifiedAt > incomingModifiedAt) {
       return; // stale webhook, skip
     }
-    await ctx.db.patch("subscriptions", existingSubscription._id, args.subscription);
+    await ctx.db.patch(
+      "subscriptions",
+      existingSubscription._id,
+      args.subscription,
+    );
   },
 });
 

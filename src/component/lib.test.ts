@@ -1138,6 +1138,160 @@ describe("insertCustomer mutation", () => {
   });
 });
 
+describe("deleteCustomer mutation", () => {
+  let t: TestConvex<typeof schema>;
+
+  beforeEach(() => {
+    t = convexTest(schema, modules);
+  });
+
+  it("deletes the customer and every local subscription", async () => {
+    await t.mutation(api.lib.insertCustomer, createTestCustomer());
+    await t.mutation(api.lib.createSubscription, {
+      subscription: createTestSubscription({
+        id: "sub_active",
+        customerId: "cust_123",
+      }),
+    });
+    await t.mutation(api.lib.createSubscription, {
+      subscription: createTestSubscription({
+        id: "sub_ended",
+        customerId: "cust_123",
+        status: "canceled",
+        endedAt: "2025-01-16T12:00:00.000Z",
+      }),
+    });
+
+    const result = await t.mutation(api.lib.deleteCustomer, {
+      userId: "user_456",
+      customerId: "cust_123",
+    });
+
+    expect(result).toEqual({
+      status: "deleted",
+      deletedSubscriptions: 2,
+    });
+    await expect(
+      t.query(api.lib.getCustomerByUserId, { userId: "user_456" }),
+    ).resolves.toBeNull();
+    await expect(
+      t.query(api.lib.listCustomerSubscriptions, {
+        customerId: "cust_123",
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("blocks late customer and subscription webhooks with a hashed tombstone", async () => {
+    await t.mutation(api.lib.insertCustomer, createTestCustomer());
+    await t.mutation(api.lib.deleteCustomer, {
+      userId: "user_456",
+      customerId: "cust_123",
+    });
+
+    const lateCustomer = await t.mutation(
+      api.lib.insertCustomer,
+      createTestCustomer(),
+    );
+    await t.mutation(api.lib.createSubscription, {
+      subscription: createTestSubscription({ customerId: "cust_123" }),
+    });
+    await t.mutation(api.lib.updateSubscription, {
+      subscription: createTestSubscription({
+        customerId: "cust_123",
+        status: "canceled",
+      }),
+    });
+
+    expect(lateCustomer).toBeNull();
+    await expect(
+      t.query(api.lib.getCustomerByUserId, { userId: "user_456" }),
+    ).resolves.toBeNull();
+    await expect(
+      t.query(api.lib.listCustomerSubscriptions, {
+        customerId: "cust_123",
+      }),
+    ).resolves.toEqual([]);
+    const tombstones = await t.run(async (ctx) =>
+      ctx.db.query("deletedCustomers").collect(),
+    );
+    expect(tombstones).toHaveLength(1);
+    expect(tombstones[0]?.customerHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(tombstones[0])).not.toContain("cust_123");
+  });
+
+  it("does not delete another customer's data", async () => {
+    await t.mutation(
+      api.lib.insertCustomer,
+      createTestCustomer({ id: "cust_other", userId: "user_other" }),
+    );
+    await t.mutation(api.lib.createSubscription, {
+      subscription: createTestSubscription({
+        id: "sub_other",
+        customerId: "cust_other",
+      }),
+    });
+
+    const result = await t.mutation(api.lib.deleteCustomer, {
+      userId: "user_missing",
+      customerId: "cust_missing",
+    });
+
+    expect(result).toEqual({
+      status: "not_found",
+      deletedSubscriptions: 0,
+    });
+    await expect(
+      t.query(api.lib.getCustomerByUserId, { userId: "user_other" }),
+    ).resolves.toMatchObject({ id: "cust_other" });
+    await expect(
+      t.query(api.lib.listCustomerSubscriptions, {
+        customerId: "cust_other",
+      }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("refuses a mismatched customer id", async () => {
+    await t.mutation(api.lib.insertCustomer, createTestCustomer());
+
+    await expect(
+      t.mutation(api.lib.deleteCustomer, {
+        userId: "user_456",
+        customerId: "cust_wrong",
+      }),
+    ).resolves.toEqual({
+      status: "customer_mismatch",
+      deletedSubscriptions: 0,
+    });
+    await expect(
+      t.query(api.lib.getCustomerByUserId, { userId: "user_456" }),
+    ).resolves.toMatchObject({ id: "cust_123" });
+  });
+
+  it("refuses a customer id mapped to another user", async () => {
+    await t.mutation(api.lib.insertCustomer, createTestCustomer());
+    await t.mutation(
+      api.lib.insertCustomer,
+      createTestCustomer({ userId: "user_re_registered" }),
+    );
+
+    await expect(
+      t.mutation(api.lib.deleteCustomer, {
+        userId: "user_456",
+        customerId: "cust_123",
+      }),
+    ).resolves.toEqual({
+      status: "shared_customer",
+      deletedSubscriptions: 0,
+    });
+    await expect(
+      t.query(api.lib.getCustomerByUserId, { userId: "user_456" }),
+    ).resolves.toMatchObject({ id: "cust_123" });
+    await expect(
+      t.query(api.lib.getCustomerByUserId, { userId: "user_re_registered" }),
+    ).resolves.toMatchObject({ id: "cust_123" });
+  });
+});
+
 describe("getCurrentSubscription query", () => {
   let t: TestConvex<typeof schema>;
 

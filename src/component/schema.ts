@@ -12,6 +12,10 @@ export default defineSchema(
     })
       .index("userId", ["userId"])
       .index("id", ["id"]),
+    deletedCustomers: defineTable({
+      customerHash: v.string(),
+      deletedAt: v.number(),
+    }).index("customerHash", ["customerHash"]),
     products: defineTable({
       id: v.string(),
       createdAt: v.string(),
