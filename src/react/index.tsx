@@ -103,7 +103,7 @@ export const CheckoutLink = ({
           if (embed) {
             await PolarEmbedCheckout.create(url, { theme });
           } else {
-            window.open(url, "_blank");
+            window.open(url, "_blank", "noopener");
           }
         } finally {
           setIsLoading(false);
