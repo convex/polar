@@ -74,6 +74,8 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.2",
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.3",
     "@convex-dev/eslint-plugin": "2.0.0",
     "@edge-runtime/vm": "5.0.0",
     "@eslint/eslintrc": "3.3.5",
@@ -119,8 +121,7 @@
     "use-debounce": "10.1.1",
     "vite": "8.0.8",
     "vitest": "5.0.0",
-    "wrangler": "4.82.2",
-    "@changesets/cli": "3.0.3"
+    "wrangler": "4.82.2"
   },
   "types": "./dist/client/index.d.ts",
   "module": "./dist/client/index.js",
