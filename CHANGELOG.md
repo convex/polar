@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3
+
+### Patch Changes
+
+- Return the typed component API from the test registration helper.
+  ([#107](https://github.com/convex/polar/issues/107))
+
 ## 0.9.2
 
 - Update ctx types for convex@1.41+
