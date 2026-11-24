@@ -1,7 +1,7 @@
 {
   "name": "@convex-dev/polar",
   "description": "A Polar component for Convex.",
-  "repository": "github:get-convex/polar",
+  "repository": "github:convex/polar",
   "homepage": "https://github.com/get-convex/polar#readme",
   "bugs": {
     "email": "support@convex.dev",
